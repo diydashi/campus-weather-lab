@@ -1,0 +1,352 @@
+% !TeX program = xelatex
+% !TeX encoding = UTF-8
+\documentclass[UTF8,zihao=-4,a4paper]{ctexart}
+
+\usepackage[a4paper,margin=2.45cm,headheight=15pt]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{url}
+
+\definecolor{Navy}{HTML}{244A73}
+\definecolor{LightBlue}{HTML}{EAF2F8}
+\definecolor{SoftGray}{HTML}{F5F6F7}
+\definecolor{CodeGreen}{HTML}{2E7D32}
+\definecolor{CodeRed}{HTML}{A33A2B}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=Navy,
+  urlcolor=Navy,
+  citecolor=Navy,
+  pdftitle={实验二：持续集成测试学习说明},
+  pdfauthor={软件测试综合实验}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{软件测试综合实验学习说明}
+\fancyhead[R]{实验二：持续集成测试}
+\fancyfoot[C]{\thepage}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.3em}
+\setlength{\emergencystretch}{3em}
+\setlist{nosep,leftmargin=2.2em}
+\renewcommand{\arraystretch}{1.35}
+
+\lstdefinestyle{codestyle}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{SoftGray},
+  frame=single,
+  rulecolor=\color{gray!35},
+  breaklines=true,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=1.8em,
+  framexleftmargin=1.2em
+}
+\lstdefinestyle{shellstyle}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{SoftGray},
+  frame=single,
+  rulecolor=\color{gray!35},
+  breaklines=true,
+  showstringspaces=false
+}
+
+\newcommand{\term}[1]{\textbf{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\risk}[1]{\textcolor{CodeRed}{\textbf{#1}}}
+
+\title{\heiti\Huge 实验二：持续集成测试\\[0.7em]
+\Large 校园出行天气风险分析工具学习说明}
+\author{软件测试综合实验\quad 个人学习材料}
+\date{结果基线：2026年8月19日}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{center}
+\begin{minipage}{0.88\textwidth}
+\colorbox{LightBlue}{\parbox{0.94\textwidth}{
+\textbf{文档定位：}本文是用于理解持续集成原理和复现实验过程的个人学习说明，
+不是最终课程报告。文中明确区分“已在本地验证的流水线命令”和“尚待 GitHub 托管环境验证的云端运行”。
+}}
+\end{minipage}
+\end{center}
+
+\vfill
+\begin{center}
+\begin{tabular}{rl}
+测试对象：& 校园出行天气风险分析工具 \\
+持续集成平台：& GitHub Actions \\
+本地环境：& Windows 10、Python 3.13.7 \\
+测试框架：& pytest 8.4.1 \\
+本地复演结果：& 39 项测试全部通过，wheel 与 sdist 构建校验成功 \\
+推荐编译器：& XeLaTeX（TeXworks 中选择 XeLaTeX）
+\end{tabular}
+\end{center}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+\section{课程任务与本实验的对应关系}
+
+课程要求在 GitHub 或类似代码仓库建立 Java/Python 项目，为项目编写测试，并使用 Jenkins 或 GitHub CI 组织从开发、提交到后台测试的持续集成流程；CI 系统还应自动编译、打包并保存测试报告。本实验选择 GitHub Actions，原因是配置文件可以与源码一同版本化，Python 项目不需要额外维护 Jenkins 服务器。
+
+实验二没有另造一个测试对象，而是继续使用实验一的天气风险项目。这样做能够体现持续集成真正解决的问题：	erm{同一项目不断变化时，已有测试怎样在每次提交后自动重复执行}。当前项目包含 Open-Meteo REST 客户端、本地风险规则、离线测试、真实接口测试以及性能实验代码。
+
+\section{持续集成的基本概念}
+
+\subsection{什么是持续集成}
+
+持续集成（Continuous Integration，CI）是一种工程实践：开发者频繁把小改动合入共享分支，自动化系统对每次改动执行构建和测试，尽早暴露集成问题。CI 不是“写一份 YAML 就结束”，而是一条带有触发条件、运行环境、步骤、失败规则和证据产物的自动化反馈链。
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=0.85cm and 0.65cm,
+  box/.style={draw=Navy,rounded corners,fill=LightBlue,minimum height=0.9cm,text width=2.35cm,align=center},
+  arrow/.style={-{Latex[length=2.5mm]},thick,color=Navy}
+]
+\node[box] (change) {修改代码与测试};
+\node[box,right=of change] (push) {Git 提交并推送};
+\node[box,right=of push] (runner) {云端 Runner\\准备环境};
+\node[box,below=of runner] (test) {执行测试\\生成 JUnit};
+\node[box,left=of test] (build) {构建 wheel\\与源码包};
+\node[box,left=of build] (evidence) {保存报告与制品\\反馈成功或失败};
+\draw[arrow] (change) -- (push);
+\draw[arrow] (push) -- (runner);
+\draw[arrow] (runner) -- (test);
+\draw[arrow] (test) -- (build);
+\draw[arrow] (build) -- (evidence);
+\end{tikzpicture}
+\end{center}
+
+\subsection{工作流、作业、步骤和 Runner}
+
+GitHub Actions 中常见层次如下：
+
+\begin{itemize}
+  \item \term{工作流（workflow）}：仓库中一份 YAML 自动化定义，本项目为 \path{.github/workflows/ci.yml}；
+  \item \term{事件（event）}：触发工作流的条件，如 \code{push}、\code{pull\_request} 或手动触发；
+  \item \term{作业（job）}：在一个 Runner 上执行的一组步骤，本项目只有 \code{test-and-build}；
+  \item \term{步骤（step）}：检出代码、配置 Python、安装依赖、测试、构建和上传制品；
+  \item \term{Runner}：真正执行命令的临时机器，本项目选择 \code{ubuntu-latest}。
+\end{itemize}
+
+一个步骤返回非零退出码时，作业通常失败并停止执行后续普通步骤。因此，pytest 的失败状态不仅显示在日志里，也会成为 CI 的质量门禁。
+
+\subsection{为什么要保存 JUnit 与制品}
+
+控制台日志便于即时阅读，但不适合长期结构化分析。pytest 的 \code{--junitxml} 会生成包含测试数、失败、错误、跳过和耗时等信息的 XML；CI 平台或后续工具可以读取它。制品（artifact）是一次运行产生的文件，例如测试报告、wheel 和源码包。GitHub 官方说明可用 \code{upload-artifact} 在作业结束后保存并共享这些文件\cite{github-artifact}。
+
+\section{先分析失败风险，再设计流水线}
+
+\begin{longtable}{p{0.20\textwidth}p{0.28\textwidth}p{0.41\textwidth}}
+\toprule
+风险 & 可能后果 & 本实验的控制措施 \\
+\midrule
+\endhead
+YAML 步骤遗漏或写错 & 看似有 CI，实际没有测试或打包 & 用离线测试检查工作流中 pytest、JUnit、build 和制品上传关键字 \\
+依赖环境漂移 & 本地通过、云端导入失败 & 锁定 pytest 与 build 版本，明确 Python 3.13，统一从 requirements 安装 \\
+网络测试不稳定 & 远程服务波动被误判为本地代码缺陷 & 先运行离线测试，再单独运行 \code{network} 测试并生成两份报告 \\
+只测不打包 & 测试通过但发布包缺少模块 & 执行 \code{python -m build}，再打开 wheel 与 sdist 检查核心源码 \\
+证据丢失 & 无法证明后台任务执行过 & 上传 JUnit 与分发包；本地复演也保存日志、环境和哈希 \\
+伪造云端结果 & 报告结论不可复核 & 明确记录本地与云端状态，没有远程运行就写“待验证” \\
+\bottomrule
+\end{longtable}
+
+最后一项尤其重要。本次工作区没有配置 GitHub 远程仓库或账户连接，所以可以完成配置和本地复演，但不能把本地命令成功描述成“GitHub Actions 已绿色通过”。
+
+\section{项目中的实现结构}
+
+\begin{lstlisting}[style=shellstyle]
+campus-weather-lab/
+|-- .github/workflows/ci.yml          # GitHub Actions 工作流
+|-- requirements-dev.txt              # pytest 与 build 版本
+|-- pyproject.toml                     # Python 包元数据
+|-- tests/                             # 单元、接口、配置、性能等测试
+|-- scripts/run-experiment-2.ps1       # 本地完整复演并留证
+|-- scripts/verify_distribution.py     # 检查 wheel 和 sdist 内容
+|-- dist/                              # 构建输出（不提交 Git）
+`-- reports/experiment-2/<时间戳>/    # 本地证据（不提交 Git）
+\end{lstlisting}
+
+\subsection{触发和最小权限}
+
+工作流配置包含三种触发方式：
+
+\begin{lstlisting}[style=codestyle]
+name: Python CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+\end{lstlisting}
+
+\code{push} 与 \code{pull\_request} 覆盖日常开发，\code{workflow\_dispatch} 便于教师或开发者手动复跑。\code{contents: read} 体现最小权限原则：此工作流只需读取源码，不应获得修改仓库内容的权限。
+
+\subsection{测试分层}
+
+\begin{lstlisting}[style=codestyle]
+- name: Run offline tests
+  run: |
+    mkdir -p reports
+    python -m pytest -m "not network" \
+      --junitxml=reports/junit-offline.xml
+
+- name: Run live API tests
+  run: python -m pytest -m "network" \
+       --junitxml=reports/junit-network.xml
+\end{lstlisting}
+
+离线测试失败通常说明源码、规则、数据契约处理或配置本身有问题；真实接口测试失败还可能来自网络、DNS、限流或第三方服务变化。分开执行不会消除网络不确定性，但能让失败定位更清楚。
+
+\subsection{自动构建与上传}
+
+\begin{lstlisting}[style=codestyle]
+- name: Build wheel and source package
+  run: python -m build
+
+- name: Upload test reports
+  if: ${{ always() }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: pytest-reports
+    path: reports/*.xml
+
+- name: Upload Python distributions
+  uses: actions/upload-artifact@v4
+  with:
+    name: python-distributions
+    path: dist/*
+\end{lstlisting}
+
+PyPA 的 \code{build} 是 PEP 517 兼容的构建前端，可生成源码分发包和 wheel\cite{pypa-build}。测试报告使用 \code{if: always()}，即使测试失败也尽量保存已有 XML；分发包只在前序步骤成功后上传，避免把失败构建误作有效制品。
+
+\section{测试本身也要被测试}
+
+\subsection{配置自检}
+
+\code{tests/test\_project\_configuration.py} 包含三项离线检查：工作流是否出现必备步骤、\code{pyproject.toml} 是否声明 \code{src} 布局与 README、生成证据和本地依赖是否被 Git 忽略。这类测试不能证明 YAML 的所有语义都正确，但能防止最常见的“误删关键步骤”。
+
+\subsection{分发包内容校验}
+
+构建命令退出码为 0 只能证明构建工具没有报告失败。\path{scripts/verify_distribution.py} 进一步要求：
+
+\begin{itemize}
+  \item \code{dist/} 中恰好存在一个 wheel 和一个 sdist；
+  \item wheel 内含 \code{campus\_weather/client.py} 与 \code{risk.py}；
+  \item sdist 内至少含核心客户端源码。
+\end{itemize}
+
+这是一个很小但有意义的“制品测试”。若包配置错误导致源码未被收集，仅看“Successfully built”可能仍然遗漏问题。
+
+\section{本地复演方法与实际结果}
+
+\subsection{为什么需要本地复演}
+
+正式 CI 应由远程平台执行，但在提交 YAML 前先运行同一组核心命令，可以更快发现依赖、测试和打包问题。本地复演不是云端 CI 的替代品：Windows 与 Ubuntu 环境不同，GitHub 事件上下文、权限和制品服务也只能在云端验证。
+
+\subsection{一键执行}
+
+在项目根目录运行：
+
+\begin{lstlisting}[style=shellstyle]
+powershell -NoProfile -ExecutionPolicy Bypass \
+  -File ./scripts/run-experiment-2.ps1
+\end{lstlisting}
+
+脚本创建时间戳目录，记录 Python、pytest、build 和系统版本；运行全部 39 项测试并输出 JUnit；构建并验证分发包；最后保存摘要与 SHA-256。最新基线为：
+
+\begin{lstlisting}[style=shellstyle]
+reports/experiment-2/20260819-175707/
+
+JUnit: tests=39, failures=0, errors=0, skipped=0
+Test time: 8.397 s
+Build exit code: 0
+Distribution verification exit code: 0
+Cloud run: pending (no GitHub remote/account connection)
+\end{lstlisting}
+
+生成的两个分发包分别约为 5.1 KiB 和 7.2 KiB，文件大小和 SHA-256 已写入 \code{artifacts.txt}。哈希不是功能正确性的证明，但可用于确认后续拿到的文件是否与本次构建一致。
+
+\subsection{如何解释“39 passed”}
+
+39 项包括 REST 客户端的输入与契约测试、7 项真实接口测试、风险规则参数化测试、性能工作负载等价性测试以及 CI 配置自检。它说明当前环境与当前时刻下所有已定义检查通过；它不意味着软件没有任何缺陷，也不证明 GitHub 的 Ubuntu Runner 已执行成功。
+
+\section{云端验证应怎样完成}
+
+后续只需由项目所有者完成一次需要账户权限的操作：
+
+\begin{enumerate}
+  \item 在 GitHub 建立空仓库，不要在线生成与本地冲突的 README；
+  \item 给本地仓库添加远程地址，提交源码后推送；
+  \item 在 Actions 页确认 \code{Python CI} 被触发；
+  \item 打开 \code{test-and-build}，逐项查看测试、构建和上传步骤；
+  \item 下载 \code{pytest-reports} 与 \code{python-distributions}，确认文件可打开；
+  \item 将运行链接、提交号、运行时间和真实结论补入课程报告。
+\end{enumerate}
+
+GitHub 官方 Python CI 教程给出了使用 \code{setup-python}、pytest、构建和制品上传的典型方式\cite{github-python-ci}。如果云端失败，应保留失败截图，先按日志定位环境差异，再修复并重跑；失败过程本身也是有价值的实验材料。
+
+\section{常见误区与改进方向}
+
+\begin{itemize}
+  \item \risk{误区一：}本地跑过 pytest 就叫持续集成。实际上还缺少代码事件触发、隔离 Runner 和自动反馈。
+  \item \risk{误区二：}CI 显示绿色就代表项目完全正确。绿色只覆盖当前测试所表达的质量标准。
+  \item \risk{误区三：}把网络失败一概归因于程序缺陷。应该先看离线任务是否通过，再分析 HTTP、DNS 和服务状态。
+  \item \risk{误区四：}只保存截图，不保存机器可读报告。截图适合报告，XML 和包文件更适合复核与后续处理。
+  \item \term{可改进项：}加入多个 Python 版本的矩阵测试；给真实接口测试增加定时任务和有限重试；为制品加入安装后冒烟测试；设置依赖缓存和分支保护。
+\end{itemize}
+
+对于本课程的“满足必备要求”目标，当前单一 Python 版本和单一作业已经足够清晰。过早加入复杂矩阵会增加解释成本，并可能让网络测试产生更多偶发失败。
+
+\section{复习检查表}
+
+完成学习后，应能独立回答：
+
+\begin{enumerate}
+  \item CI 与“手动运行测试”最本质的区别是什么？
+  \item 为什么离线测试和真实接口测试要分开？
+  \item JUnit XML、控制台日志、截图和 artifact 各自解决什么问题？
+  \item 为什么构建成功后还要检查 wheel 与 sdist 内容？
+  \item 本地复演通过为什么不能写成 GitHub Actions 已通过？
+  \item 一个测试失败时，退出码如何成为质量门禁？
+\end{enumerate}
+
+\section{结论}
+
+本实验建立了从源码到可复核证据的最小持续集成链：事件触发、准备 Python、安装依赖、分层执行 pytest、生成 JUnit、构建 wheel 与 sdist、上传报告和分发包。2026年8月19日的本地复演中 39 项测试全部通过，两个分发包构建并校验成功。云端运行需要 GitHub 仓库所有者授权推送，因此当前保持“待验证”状态；这种边界说明比伪造一张绿色截图更符合软件测试的可追溯原则。
+
+\begin{thebibliography}{9}
+\bibitem{github-python-ci}
+GitHub Docs. \emph{Building and testing Python}.\\
+\url{https://docs.github.com/en/actions/tutorials/build-and-test-code/python}
+
+\bibitem{github-artifact}
+GitHub Docs. \emph{Storing and sharing data from a workflow}.\\
+\url{https://docs.github.com/en/actions/tutorials/store-and-share-data}
+
+\bibitem{pypa-build}
+Python Packaging Authority. \emph{build documentation}.\\
+\url{https://build.pypa.io/en/stable/}
+\end{thebibliography}
+
+\end{document}

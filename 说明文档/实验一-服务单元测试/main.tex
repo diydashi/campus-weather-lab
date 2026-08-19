@@ -1,0 +1,560 @@
+% !TeX program = xelatex
+% !TeX encoding = UTF-8
+\documentclass[UTF8,zihao=-4,a4paper]{ctexart}
+
+\usepackage[a4paper,margin=2.45cm,headheight=15pt]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{url}
+
+\definecolor{Navy}{HTML}{244A73}
+\definecolor{LightBlue}{HTML}{EAF2F8}
+\definecolor{SoftGray}{HTML}{F5F6F7}
+\definecolor{CodeGreen}{HTML}{2E7D32}
+\definecolor{CodeRed}{HTML}{A33A2B}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=Navy,
+  urlcolor=Navy,
+  citecolor=Navy,
+  pdftitle={实验一：REST 服务单元测试学习说明},
+  pdfauthor={软件测试综合实验}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{软件测试综合实验学习说明}
+\fancyhead[R]{实验一：服务单元测试}
+\fancyfoot[C]{\thepage}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.3em}
+\setlist{nosep,leftmargin=2.2em}
+\renewcommand{\arraystretch}{1.35}
+
+\lstdefinestyle{pythonstyle}{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{Navy}\bfseries,
+  stringstyle=\color{CodeGreen},
+  commentstyle=\color{gray},
+  backgroundcolor=\color{SoftGray},
+  frame=single,
+  rulecolor=\color{gray!35},
+  breaklines=true,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=1.8em,
+  framexleftmargin=1.2em
+}
+
+\lstdefinestyle{shellstyle}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{SoftGray},
+  frame=single,
+  rulecolor=\color{gray!35},
+  breaklines=true,
+  showstringspaces=false
+}
+
+\newcommand{\term}[1]{\textbf{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\risk}[1]{\textcolor{CodeRed}{\textbf{#1}}}
+
+\title{\heiti\Huge 实验一：REST 服务单元测试\\[0.7em]
+\Large 校园出行天气风险分析工具学习说明}
+\author{软件测试综合实验\quad 个人学习材料}
+\date{结果基线：2026年8月19日}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{center}
+\begin{minipage}{0.88\textwidth}
+\colorbox{LightBlue}{\parbox{0.94\textwidth}{
+\textbf{文档定位：}本文不是最终课程报告，而是一份可复习、可复现实验的学习说明。
+它不仅回答“做了什么”，还解释“为什么这样做”“每段代码承担什么责任”以及“如何理解测试结果”。
+}}
+\end{minipage}
+\end{center}
+
+\vfill
+\begin{center}
+\begin{tabular}{rl}
+测试对象：& Open-Meteo 地理编码 API 与天气预报 API \\
+实现语言：& Python 3.13.7 \\
+测试框架：& pytest 8.4.1 \\
+实际结果：& 24 个离线测试 + 7 个真实接口测试，全部通过 \\
+推荐编译器：& XeLaTeX（TeXworks 中选择 XeLaTeX）
+\end{tabular}
+\end{center}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+\section{从课程要求到本实验}
+
+课程要求选择公开 REST 微服务，分析潜在质量风险，使用 pytest 等框架编写不少于两个测试，进行参数化，并比较服务接口测试与类方法级单元测试。本项目没有只写两个“能跑”的例子，而是建立了一个小型但完整的测试对象：\term{校园出行天气风险分析工具}。
+
+工具的使用场景是：用户输入城市名，程序先把城市名解析为经纬度，再查询逐小时天气，最后根据温度、降水概率和风速给出出行提示。这个场景足够简单，便于理解；又包含网络、HTTP、JSON、动态数据和本地业务规则，能够体现真实软件测试中的主要矛盾。
+
+\subsection{为什么选择 Open-Meteo}
+
+Open-Meteo 提供公开的地理编码和天气预报接口。地理编码端点接收城市名并返回候选位置；天气预报端点接收经纬度、时间范围和变量列表并返回 JSON。官方文档说明，地理编码的 \code{count} 最大为 100，错误参数会返回 HTTP 400；天气预报最多可请求 16 天，并提供温度、降水概率和 10 米风速等小时变量\cite{openmeteo-geocoding,openmeteo-forecast}。
+
+选择它的实际好处包括：不必申请课程专用密钥；输入输出是典型 REST 风格；数据会随时间变化，正好用于学习“动态结果应该怎样断言”。
+
+\subsection{真正的被测链路}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=1.15cm and 1.2cm,
+  box/.style={draw=Navy,rounded corners,fill=LightBlue,minimum height=1.0cm,text width=3.0cm,align=center},
+  api/.style={draw=CodeGreen,rounded corners,fill=green!7,minimum height=1.0cm,text width=3.2cm,align=center},
+  arrow/.style={-{Latex[length=2.5mm]},thick,color=Navy}
+]
+\node[box] (input) {用户输入城市名\\例如“南京”};
+\node[api,right=of input] (geo) {地理编码 API\\城市名 $\rightarrow$ 经纬度};
+\node[api,right=of geo] (weather) {天气预报 API\\经纬度 $\rightarrow$ 小时数据};
+\node[box,below=of weather] (risk) {本地风险规则\\天气数据 $\rightarrow$ 出行提示};
+\draw[arrow] (input) -- (geo);
+\draw[arrow] (geo) -- (weather);
+\draw[arrow] (weather) -- (risk);
+\end{tikzpicture}
+\end{center}
+
+这条链路包含两类被测对象：远程服务和本地函数。若地理编码错了，后续天气可能属于另一个城市；若天气数组长度错位，温度和风速就可能被错误组合；若本地阈值规则错了，即使 API 数据正确也会给出错误建议。因此，测试必须分层，而不能把所有问题压在一个端到端测试里。
+
+\section{必要的基础概念}
+
+\subsection{REST、HTTP 与 JSON 分别是什么}
+
+\term{HTTP} 是客户端与服务器交换消息的应用层协议。一次典型请求包含方法、URL、查询参数和头部；响应包含状态码、头部和消息体。本项目只使用 GET 请求。
+
+\term{REST} 不是某种编程语言，而是一组面向资源的接口设计风格。在本实验中，城市搜索和天气预报可以理解为两个可通过 URL 访问的资源查询入口。
+
+\term{JSON} 是接口消息体采用的数据表示格式。例如：
+
+\begin{lstlisting}[style=shellstyle]
+{
+  "timezone": "Asia/Shanghai",
+  "hourly": {
+    "time": ["2026-08-19T00:00"],
+    "temperature_2m": [26.9]
+  }
+}
+\end{lstlisting}
+
+HTTP 200 只表示服务器成功处理了请求，\risk{并不自动证明业务数据正确}。测试还要继续验证 JSON 是否可解码、字段是否存在、类型是否正确、数组是否对齐以及数值是否合理。
+
+\subsection{什么是测试预言}
+
+测试预言（test oracle）是判断实际结果是否正确的规则。对于固定函数，预言可以是精确值，例如温度 36 度应包含“高温”。对于实时天气，不能断言“南京现在一定是 26.9 度”，因为真实数据会变化。此时应使用稳定不变量作为预言：
+
+\begin{itemize}
+  \item HTTP 和 JSON 协议可正常解析；
+  \item 时区是请求的 \code{Asia/Shanghai}，UTC 偏移为 28800 秒；
+  \item 1 天返回 24 个小时点，2 天返回 48 个小时点；
+  \item 时间、温度、降水概率和风速数组长度相同；
+  \item 降水概率位于 0 到 100 之间，风速非负；
+  \item 城市候选中存在国家代码为 \code{CN} 的结果。
+\end{itemize}
+
+这类断言不会依赖某一时刻的天气数值，但一旦接口结构或关键语义改变，仍能及时失败。
+
+\subsection{“服务单元测试”在工程上的准确含义}
+
+课程把该项目称为服务单元测试。更严格地说，本项目有三层：
+
+\begin{enumerate}
+  \item \term{函数级单元测试}：只运行 \code{assess\_hour} 等本地函数；
+  \item \term{客户端单元测试}：使用伪传输函数替代网络，测试 URL 构造、解析和异常转换；
+  \item \term{真实服务集成或契约测试}：实际访问 Open-Meteo，验证我方客户端与远程接口当前能够协作。
+\end{enumerate}
+
+第三层跨越了网络和第三方部署边界，所以它并不是最纯粹的“单元测试”。理解这个区别有助于解释：为什么真实接口测试较慢，为什么失败不一定代表我方代码有缺陷，以及为什么还需要离线测试。
+
+\section{项目代码结构与设计原理}
+
+\subsection{目录职责}
+
+\begin{longtable}{p{0.37\textwidth}p{0.56\textwidth}}
+\toprule
+路径 & 职责 \\
+\midrule
+\endfirsthead
+\toprule
+路径 & 职责 \\
+\midrule
+\endhead
+\path{src/campus_weather/client.py} & REST 客户端、参数校验、JSON 解析、异常转换与响应契约检查。 \\
+\path{src/campus_weather/risk.py} & 与网络无关的校园出行风险规则。 \\
+\path{tests/test_client_unit.py} & 客户端的离线单元测试，向客户端注入伪 HTTP 传输。 \\
+\path{tests/test_risk.py} & 风险规则的参数化单元测试。 \\
+\path{tests/test_open_meteo_api.py} & 带 \code{network} 标记的真实服务测试。 \\
+\path{scripts/run-experiment-1.ps1} & 分层执行测试并保存环境、日志、JUnit XML、样例和摘要。 \\
+\path{scripts/capture_api_sample.py} & 真实服务通过后保存少量响应样例。 \\
+\path{reports/experiment-1/} & 本地运行证据；属于易变结果，不提交 Git。 \\
+\bottomrule
+\end{longtable}
+
+\subsection{客户端为什么使用标准库}
+
+客户端使用 \code{urllib.request} 而不是额外安装 \code{requests}。这不是说第三方库不好，而是本实验的目标是测试方法，标准库已经能完成带超时的 GET 请求和 JSON 解码。这样运行依赖只有 pytest，项目更容易复现。
+
+\subsection{超时与异常边界}
+
+任何网络请求都有可能永久等待、DNS 失败、连接拒绝或收到 HTTP 错误。因此默认传输函数明确设置超时，并把底层的 \code{URLError}、\code{TimeoutError}、\code{OSError} 转换为项目自己的 \code{ServiceError}。
+
+这样做的价值在于：上层调用者不必了解所有底层网络异常；测试也可以统一断言项目语义。例如，HTTP 400 的响应会变成包含状态码和原因的 \code{ServiceError}，而不是把内部实现细节泄露到业务层。
+
+\subsection{依赖注入如何让网络代码可测}
+
+构造客户端时可传入一个 \code{transport} 函数：
+
+\begin{lstlisting}[style=pythonstyle]
+Transport = Callable[[str, float], tuple[int, bytes]]
+
+def __init__(self, *, timeout=10.0, transport=None):
+    self.timeout = timeout
+    self._transport = transport or _default_transport
+\end{lstlisting}
+
+生产运行时使用真实网络函数；单元测试时传入一个立即返回固定状态码和字节串的伪函数。这个技巧称为\term{依赖注入}。它带来三个重要收益：
+
+\begin{itemize}
+  \item 测试不联网，速度快且结果确定；
+  \item 可以轻易制造 HTTP 400、坏 JSON、缺字段等线上不便稳定制造的场景；
+  \item 可以捕获客户端最终生成的 URL，验证查询参数是否正确编码。
+\end{itemize}
+
+\subsection{响应契约检查}
+
+天气客户端现在会主动检查四个项目必需数组：
+
+\begin{lstlisting}[style=pythonstyle]
+required_series = (
+    "time",
+    "temperature_2m",
+    "precipitation_probability",
+    "wind_speed_10m",
+)
+\end{lstlisting}
+
+每个字段必须是列表，所有列表必须非空且长度一致。这里检查的是\term{结构契约}，而不是预测准确率。如果某天远程 API 改名、漏字段或返回错位数组，客户端在数据进入风险计算前就抛出清晰异常，从而避免更隐蔽的错误。
+
+\section{从风险推导测试}
+
+测试不是“想到什么测什么”。先问“什么错误最可能破坏用户目标”，再用合适的测试技术覆盖。
+
+\begin{longtable}{p{0.07\textwidth}p{0.25\textwidth}p{0.24\textwidth}p{0.33\textwidth}}
+\toprule
+编号 & 风险 & 后果 & 测试策略 \\
+\midrule
+\endfirsthead
+\toprule
+编号 & 风险 & 后果 & 测试策略 \\
+\midrule
+\endhead
+R1 & 城市名为空、无结果或国家错误 & 无法查询或查到错误地点 & 等价类、南京/北京/上海参数化、未知城市空结果 \\
+R2 & 经纬度或预测天数越界 & 发送无意义请求 & 边界值：纬度 91、经度 181、天数 0 和 17 \\
+R3 & HTTP 错误或响应不是 UTF-8 JSON & 客户端崩溃、错误信息不清 & 注入 HTTP 400、普通文本和非法字节 \\
+R4 & JSON 缺字段或字段类型改变 & 解析失败或错误数据流入业务层 & 注入 \code{results} 错类型、位置缺坐标、缺小时数组 \\
+R5 & 小时数组为空或长度错位 & 不同时间点的数据被错误组合 & 契约测试：非空且四个数组等长 \\
+R6 & 实时数值每天变化 & 测试偶发失败 & 只断言范围、不变量、单位和关系，不断言具体温度 \\
+R7 & 参数编码错误 & 服务忽略或误解请求 & 捕获 URL 并解析查询字符串 \\
+R8 & 本地阈值规则错误 & 出行建议错误 & 正常、高温、低温+降雨、降雨+大风参数化 \\
+R9 & 网络问题与代码缺陷混淆 & 难以定位失败原因 & 使用 \code{network} 标记，离线层与真实服务层分开运行 \\
+\bottomrule
+\end{longtable}
+
+\subsection{等价类与边界值}
+
+输入空间往往是无限的，不可能穷举。\term{等价类划分}把行为相近的输入归为一类，例如合法城市、空城市、无匹配城市。每类选择代表值即可。
+
+\term{边界值分析}关注规则交界处。本项目规定纬度为 $[-90,90]$、经度为 $[-180,180]$、预测天数为 $[1,16]$。测试选用 91、181、0、17，是因为越过边界一个单位最能检查校验是否生效。若继续深化，可补充刚好位于边界的 -90、90、-180、180、1、16。
+
+\subsection{参数化为什么不是简单循环}
+
+pytest 的 \code{@pytest.mark.parametrize} 会为每一组参数生成独立测试项\cite{pytest-parametrize}。例如南京、北京、上海会分别出现在结果中。相比在一个测试函数里手写循环，它有两个优势：失败时能直接看到是哪组数据失败；JUnit 报告也能独立统计每个数据组合。
+
+\subsection{负向测试的意义}
+
+只测试“南京能查询”属于快乐路径。真实程序还必须面对空字符串、非法范围、服务器报错、错误编码和结构变化。负向测试证明的不只是“程序会失败”，而是它能否\term{以预期方式失败}：不发出本可提前拦截的请求，并提供可理解的异常类型和消息。
+
+\section{测试分层与用例组成}
+
+\begin{center}
+\begin{tikzpicture}[
+  layer/.style={trapezium,trapezium left angle=70,trapezium right angle=110,draw=Navy,align=center,minimum height=1.0cm},
+  note/.style={align=left,text width=5.0cm}
+]
+\node[layer,fill=green!10,minimum width=3.4cm] (top) {7 个真实接口测试};
+\node[layer,fill=LightBlue,minimum width=5.2cm,below=0.25cm of top] (mid) {18 个客户端离线测试};
+\node[layer,fill=gray!10,minimum width=7.0cm,below=0.25cm of mid] (bottom) {6 个本地风险规则测试};
+\node[note,right=0.7cm of top] {慢、依赖网络，验证远程契约};
+\node[note,right=0.7cm of mid] {快、可制造异常，验证客户端逻辑};
+\node[note,right=0.7cm of bottom] {最快、完全确定，验证业务规则};
+\end{tikzpicture}
+\end{center}
+
+这种形状类似测试金字塔：底层测试数量更多、运行更快；顶部真实服务测试较少，只验证跨系统协作。当前总计 31 个测试项：
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{lrrX}
+\toprule
+测试文件 & 数量 & 是否联网 & 主要目标 \\
+\midrule
+\path{test_client_unit.py} & 18 & 否 & 参数、URL、解析、HTTP 错误、坏 JSON、响应契约 \\
+\path{test_risk.py} & 6 & 否 & 风险阈值和非法概率 \\
+\path{test_open_meteo_api.py} & 7 & 是 & 城市查询、无结果、1/2 天数组、时区、坐标、单位 \\
+\midrule
+合计 & 31 & 分层 & 本地逻辑与真实服务均覆盖 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{怎样执行与保存证据}
+
+\subsection{依赖为何放在项目目录}
+
+开发依赖通过 \code{pip --target} 安装到 \path{.local-packages/}，不修改系统 Python，也不依赖某个 Conda 环境。运行脚本把该目录和 \path{src/} 临时加入 \code{PYTHONPATH}。这符合课程实验“可复制”的要求，也降低环境污染。
+
+首次准备：
+
+\begin{lstlisting}[style=shellstyle]
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\setup-local.ps1
+\end{lstlisting}
+
+完整执行并留证：
+
+\begin{lstlisting}[style=shellstyle]
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\run-experiment-1.ps1
+\end{lstlisting}
+
+\subsection{留证脚本的执行顺序}
+
+\begin{enumerate}
+  \item 创建以时间戳命名的结果目录；
+  \item 保存操作系统、Python、pytest 和项目路径；
+  \item 运行 \code{-m "not network"}，保存离线日志和 JUnit XML；
+  \item 运行 \code{-m "network"}，保存真实接口日志和 JUnit XML；
+  \item 网络层通过后保存南京位置及前三小时天气样例；
+  \item 写入三个阶段的退出码；只有三项均为 0 才判定成功；
+  \item 用 \path{LATEST.txt} 指向最近一次结果目录。
+\end{enumerate}
+
+JUnit XML 是通用测试结果格式，pytest 可通过 \code{--junitxml=路径} 生成\cite{pytest-junit}。它比截图更适合自动统计；终端日志更适合人工阅读；接口样例说明当时实际收到了什么。三者互补，不能互相完全替代。
+
+\subsection{为什么报告目录不提交 Git}
+
+日志、天气样例和 XML 都随时间变化。如果每次运行都提交，会造成大量没有必要的版本差异。项目提交的是测试代码、脚本和说明文档；本地 \path{reports/} 保存某次实验的原始证据。正式交作业时再从中选择关键结果嵌入报告。
+
+\section{2026年8月19日实际结果}
+
+\subsection{环境与结果摘要}
+
+最新完整结果位于：
+
+\begin{center}
+\path{reports/experiment-1/20260819-114835/}
+\end{center}
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{0.92\textwidth}{lX}
+\toprule
+项目 & 实际值 \\
+\midrule
+执行时间 & 2026-08-19 11:48:35，UTC+08:00 \\
+操作系统 & Microsoft Windows NT 10.0.19045.0 \\
+Python & 3.13.7 \\
+pytest & 8.4.1 \\
+离线层 & 24 passed，7 deselected，0.15 s \\
+真实接口层 & 7 passed，24 deselected，8.43 s \\
+总体 & 31 个测试项全部通过，失败和错误均为 0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+两层耗时差异明显：离线层 24 项不到 1 秒；真实接口层只有 7 项，却用时约 8 秒。原因不是网络层代码更多，而是每项测试都要进行 DNS、TLS、网络传输和远程处理。这正是分层测试的直接证据。
+
+\subsection{真实响应样例说明了什么}
+
+留存样例记录的南京候选为北纬 32.06167 度、东经 118.77778 度，国家代码 \code{CN}。天气响应声明：
+
+\begin{itemize}
+  \item 时区：\code{Asia/Shanghai}；
+  \item UTC 偏移：28800 秒；
+  \item 时间格式：ISO 8601；
+  \item 温度单位：摄氏度；降水概率单位：百分比；风速单位：km/h；
+  \item 样例只保存前三小时，完整响应不在学习文档中重复堆砌。
+\end{itemize}
+
+这里的具体天气数值只是\term{执行证据}，不是长期有效的预期结果。下次运行数值变化并不代表回归失败；结构、单位和约束改变才可能触发测试失败。
+
+\subsection{通过意味着什么，又不意味着什么}
+
+31 项通过可以支持以下结论：
+
+\begin{itemize}
+  \item 当前参数校验、URL 构造、JSON 解码和异常转换符合已有设计；
+  \item 客户端能识别常见的坏响应结构；
+  \item 2026年8月19日执行时，Open-Meteo 的关键字段、数组关系、时区和单位符合客户端假设；
+  \item 本地风险规则对已列出的典型组合给出预期提示。
+\end{itemize}
+
+但通过\risk{不能}证明：Open-Meteo 的气象预测一定准确；所有城市名都能正确消歧；所有网络异常都已覆盖；程序在高并发下可靠；未来 API 永远不变化；业务阈值符合医学或气象专业建议。这些属于本实验范围之外或需要其他类型测试解决的问题。
+
+\section{执行中遇到的问题与修复思路}
+
+\subsection{PowerShell 的 UTF-8 脚本兼容问题}
+
+第一次运行留证脚本时，Windows PowerShell 5 把不带 BOM 的 UTF-8 文件按本地代码页解释。中文字符串变成乱码，其中某些字节组合破坏了引号解析，脚本在测试启动前就报语法错误。
+
+修复方式是让自动化 \code{.ps1} 源码中的固定消息使用 ASCII；中文仍保留在 Python、Markdown 和 LaTeX 文档里。也可以把脚本保存为带 BOM 的 UTF-8，或改用 PowerShell 7，但纯 ASCII 自动化脚本在 CI 中兼容性最好。
+
+\subsection{动态路径作为命令行参数}
+
+第二次运行使用了 \code{--junitxml=(Join-Path ...)}。PowerShell 没有按期望把它作为一个完整的原生命令参数，pytest 收到了被拆分的路径。
+
+修复方式是先计算变量：
+
+\begin{lstlisting}[style=shellstyle]
+$OfflineXml = Join-Path $ResultDirectory "junit-offline.xml"
+python -m pytest "--junitxml=$OfflineXml"
+\end{lstlisting}
+
+这个问题说明，脚本测试不仅要验证 Python 代码，也要实际运行外围自动化。命令看起来合理，并不等于不同 shell 一定按相同方式解析。
+
+\section{代码阅读路线}
+
+如果对代码还不熟，建议按以下顺序学习：
+
+\begin{enumerate}
+  \item 先读 \path{risk.py}。它只有输入检查和三个阈值，理解成本最低；
+  \item 再读 \path{test_risk.py}，观察一个测试函数如何通过参数化生成多项测试；
+  \item 阅读 \path{client.py} 的 \code{search\_city} 和 \code{forecast}，先忽略底层网络细节；
+  \item 阅读 \code{\_get\_json}，理解状态码、字节、UTF-8、JSON 与异常转换的顺序；
+  \item 阅读 \path{test_client_unit.py} 中的 \code{json\_transport}，理解伪传输如何隔离网络；
+  \item 最后读 \path{test_open_meteo_api.py}，比较真实服务断言为什么更宽松；
+  \item 运行 \path{run-experiment-1.ps1}，把日志与源码中的测试函数逐一对应。
+\end{enumerate}
+
+每读一个测试，可以用四个问题自检：它防什么风险？输入是什么？被测动作是什么？断言为什么稳定？如果无法回答，说明测试目的还没有真正理解。
+
+\section{REST 接口测试与函数测试的比较}
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{p{0.19\textwidth}XX}
+\toprule
+维度 & REST 真实接口测试 & 类或函数级单元测试 \\
+\midrule
+共同结构 & \multicolumn{2}{p{0.70\textwidth}}{准备输入、执行被测对象、获取实际结果、根据预言断言、报告成功或失败} \\
+依赖 & 网络、DNS、TLS、第三方服务和实时数据 & 通常只有本进程代码与固定测试数据 \\
+速度 & 较慢，本次约 1 秒/项 & 快，本次 24 项不到 1 秒 \\
+稳定性 & 可能受网络和服务状态影响 & 高，容易重复 \\
+故障定位 & 原因可能在客户端、协议、网络或服务端 & 通常能定位到较小代码单元 \\
+适合发现 & 接口变更、序列化、真实部署和系统间兼容问题 & 边界条件、分支逻辑、异常处理和算法错误 \\
+测试数据 & 应避免精确断言动态天气值 & 可完全控制输入和期望输出 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+正确做法不是二选一。单元测试提供速度和定位能力，少量真实接口测试提供现实性。两层测试同时存在，才能既快速反馈，又避免伪环境与真实服务脱节。
+
+\section{局限、改进方向与练习}
+
+\subsection{当前局限}
+
+\begin{itemize}
+  \item 城市同名问题只通过国家代码做了粗略检查，尚未利用省份或行政区精确消歧；
+  \item 真实接口测试逐项请求，尚未做会话复用或响应缓存；
+  \item 没有专门模拟连接超时，因为默认网络函数的异常分支尚未抽成更细粒度适配器；
+  \item 数值范围采用宽松工程常识，只用于发现明显坏数据，不代表气象学质量评价；
+  \item 风险规则是教学用规则，没有经过专业健康或安全验证。
+\end{itemize}
+
+\subsection{可继续完成的小练习}
+
+\begin{enumerate}
+  \item 为合法边界 -90、90、-180、180、1 天和 16 天补测试；
+  \item 给地理编码请求增加可选 \code{countryCode=CN}，再设计兼容性测试；
+  \item 使用 \code{monkeypatch} 模拟 \code{urlopen} 超时，验证异常链；
+  \item 故意删除 \code{wind\_speed\_10m} 字段，观察哪一层测试最先失败；
+  \item 把降雨阈值从 60 改为 50，先修改测试再修改实现，体验测试驱动开发；
+  \item 为 JUnit XML 写一个只读汇总脚本，自动输出测试数、失败数和耗时。
+\end{enumerate}
+
+\section{复现检查清单}
+
+\begin{enumerate}[label=$\square$]
+  \item 在项目根目录确认系统可运行 Python 3.11 或更高版本；
+  \item 执行 \path{scripts/setup-local.ps1}，确认 \path{.local-packages/pytest} 存在；
+  \item 执行 \path{scripts/run-experiment-1.ps1}；
+  \item 检查最后一行是否显示 \code{Experiment 1 passed}；
+  \item 打开 \path{reports/experiment-1/LATEST.txt} 找到本次结果；
+  \item 检查两份日志分别显示 24 passed 和 7 passed；
+  \item 检查两份 JUnit XML 的 failures 与 errors 均为 0；
+  \item 打开 \path{api-sample.json}，确认位置、元数据和三个小时样例存在；
+  \item 用 TeXworks 打开本文件，选择 XeLaTeX 编译；
+  \item 最终报告只选择有信息量的截图，并记录运行日期和环境。
+\end{enumerate}
+
+\section{术语速查}
+
+\begin{description}[style=nextline]
+  \item[断言（assertion）] 把实际值与测试预言比较；不满足时使测试失败。
+  \item[参数化（parameterization）] 用多组输入和期望值复用同一个测试结构，并生成独立测试项。
+  \item[测试夹具（fixture）] 为测试准备和复用环境或对象；本项目用模块级 fixture 复用客户端。
+  \item[依赖注入（dependency injection）] 从外部传入依赖，使实现可替换、可隔离测试。
+  \item[契约测试（contract test）] 验证系统之间约定的字段、类型、单位、状态码和关系。
+  \item[测试替身（test double）] 替代真实依赖的对象或函数；本项目的伪 transport 属于此类。
+  \item[不变量（invariant）] 即使实时数据改变也应始终成立的规则，例如多个小时数组等长。
+  \item[JUnit XML] 许多 CI 和测试管理工具可读取的结构化测试结果格式。
+\end{description}
+
+\section{小结}
+
+本实验最重要的学习点不是“调用了一个天气接口”，而是建立了从风险到测试的推理链：城市与天气数据可能出错，因此先定义稳定契约；实时数据不可固定，因此使用范围和关系作为预言；网络依赖不稳定，因此通过依赖注入建立快速离线层，同时保留少量真实服务层；测试结果不仅显示在屏幕上，还以日志、JUnit XML、环境快照和接口样例留存。
+
+如果以后忘记某段代码，优先回到三个问题：\term{它隔离了什么依赖？它防止什么风险？它的断言为什么稳定？} 能回答这三个问题，就掌握了实验一的核心。
+
+\begin{thebibliography}{9}
+\bibitem{openmeteo-geocoding}
+Open-Meteo. \emph{Geocoding API Documentation}.\newline
+\url{https://open-meteo.com/en/docs/geocoding-api}，访问日期：2026-08-19。
+
+\bibitem{openmeteo-forecast}
+Open-Meteo. \emph{Weather Forecast API Documentation}.\newline
+\url{https://open-meteo.com/en/docs}，访问日期：2026-08-19。
+
+\bibitem{pytest-parametrize}
+pytest documentation. \emph{How to parametrize fixtures and test functions}.\newline
+\url{https://docs.pytest.org/en/stable/how-to/parametrize.html}，访问日期：2026-08-19。
+
+\bibitem{pytest-junit}
+pytest documentation. \emph{Creating JUnitXML format files}.\newline
+\url{https://docs.pytest.org/en/stable/how-to/output.html}，访问日期：2026-08-19。
+\end{thebibliography}
+
+\end{document}

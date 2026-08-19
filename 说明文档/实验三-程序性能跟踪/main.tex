@@ -1,0 +1,407 @@
+% !TeX program = xelatex
+% !TeX encoding = UTF-8
+\documentclass[UTF8,zihao=-4,a4paper]{ctexart}
+
+\usepackage[a4paper,margin=2.45cm,headheight=15pt]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{url}
+
+\definecolor{Navy}{HTML}{244A73}
+\definecolor{LightBlue}{HTML}{EAF2F8}
+\definecolor{SoftGray}{HTML}{F5F6F7}
+\definecolor{CodeGreen}{HTML}{2E7D32}
+\definecolor{CodeRed}{HTML}{A33A2B}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=Navy,
+  urlcolor=Navy,
+  citecolor=Navy,
+  pdftitle={实验三：程序性能跟踪学习说明},
+  pdfauthor={软件测试综合实验}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{软件测试综合实验学习说明}
+\fancyhead[R]{实验三：程序性能跟踪}
+\fancyfoot[C]{\thepage}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.3em}
+\setlength{\emergencystretch}{3em}
+\setlist{nosep,leftmargin=2.2em}
+\renewcommand{\arraystretch}{1.35}
+
+\lstdefinestyle{pythonstyle}{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{Navy}\bfseries,
+  stringstyle=\color{CodeGreen},
+  commentstyle=\color{gray},
+  backgroundcolor=\color{SoftGray},
+  frame=single,
+  rulecolor=\color{gray!35},
+  breaklines=true,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=1.8em,
+  framexleftmargin=1.2em
+}
+\lstdefinestyle{shellstyle}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{SoftGray},
+  frame=single,
+  rulecolor=\color{gray!35},
+  breaklines=true,
+  showstringspaces=false
+}
+
+\newcommand{\term}[1]{\textbf{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\risk}[1]{\textcolor{CodeRed}{\textbf{#1}}}
+
+\title{\heiti\Huge 实验三：程序性能跟踪\\[0.7em]
+\Large 校园出行天气风险分析工具学习说明}
+\author{软件测试综合实验\quad 个人学习材料}
+\date{结果基线：2026年8月19日}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{center}
+\begin{minipage}{0.88\textwidth}
+\colorbox{LightBlue}{\parbox{0.94\textwidth}{
+\textbf{文档定位：}本文是程序性能分析的个人学习说明，不是最终课程报告。
+重点解释怎样建立公平的对照工作负载、怎样阅读 CPU 和内存指标，以及为什么优化前必须先验证功能等价。
+}}
+\end{minipage}
+\end{center}
+
+\vfill
+\begin{center}
+\begin{tabular}{rl}
+测试对象：& 天气风险批处理工作负载 \\
+固定输入：& 24 条逐小时天气记录 \\
+循环规模：& 10,000 轮，共处理 240,000 个事件 \\
+CPU 工具：& Python 标准库 cProfile / pstats \\
+内存工具：& Python 标准库 tracemalloc \\
+实际结论：& 结果等价；时间减少 39.90\%，跟踪峰值减少 99.987\% \\
+推荐编译器：& XeLaTeX（TeXworks 中选择 XeLaTeX）
+\end{tabular}
+\end{center}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+\section{课程要求与实验思路}
+
+课程要求任选 Java/Python 应用，比较性能剖析工具，说明入口与运行设置，获取 CPU 指标并定位时间瓶颈，同时获取内存指标、分析瓶颈和设想改进。本实验使用 Python 标准库完成，避免额外安装大型图形工具，仍覆盖“测量、定位、优化、复测、解释”的完整链路。
+
+性能分析最容易犯的错误，是先凭直觉改代码，再挑一个有利数字宣布成功。本实验采用以下顺序：
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=0.75cm,
+  box/.style={draw=Navy,rounded corners,fill=LightBlue,minimum height=0.85cm,text width=2.6cm,align=center},
+  arrow/.style={-{Latex[length=2.5mm]},thick,color=Navy}
+]
+\node[box] (fix) {固定输入和工作量};
+\node[box,right=of fix] (base) {建立可复现基线};
+\node[box,right=of base] (profile) {CPU/内存跟踪\\定位瓶颈};
+\node[box,below=of profile] (change) {针对热点改进};
+\node[box,left=of change] (equal) {先验证结果等价};
+\node[box,left=of equal] (again) {相同条件复测\\解释边界};
+\draw[arrow] (fix) -- (base);
+\draw[arrow] (base) -- (profile);
+\draw[arrow] (profile) -- (change);
+\draw[arrow] (change) -- (equal);
+\draw[arrow] (equal) -- (again);
+\end{tikzpicture}
+\end{center}
+
+\section{性能跟踪基础}
+
+\subsection{性能测试与性能剖析的区别}
+
+性能测试通常回答“在某一负载下快不快、能承受多少请求”；性能剖析（profiling）更关注“时间花在哪些函数、分配发生在哪里”。本实验不是 Web 并发压测，而是本地应用的 CPU 与对象分配跟踪。
+
+\term{时间性能}不只是总耗时。CPU profiler 会统计函数调用次数、函数自身耗时和包含子调用的累计耗时，从而定位热点。\term{空间性能}也不只是一个进程总内存数字；对象分配跟踪能够说明某个实现为什么制造大量暂时对象或长期保留对象。
+
+\subsection{确定性剖析与采样剖析}
+
+Python 的 \code{cProfile} 是确定性 profiler：解释器记录大量函数事件，能提供精确调用关系与次数。采样 profiler 则周期性观察调用栈，通常侵入更低，更适合长时间运行的生产程序，但小函数的调用次数不一定精确。官方文档建议多数用户优先使用开销较低的 \code{cProfile}，并用 \code{pstats} 排序和查看统计\cite{python-profile}。
+
+\subsection{常见工具比较}
+
+\small
+\begin{longtable}{p{0.18\textwidth}p{0.16\textwidth}p{0.25\textwidth}p{0.30\textwidth}}
+\toprule
+工具 & 类型 & 优点 & 局限与适用场景 \\
+\midrule
+\endhead
+cProfile + pstats & 确定性 CPU & 标准库、调用次数与累计时间完整、易保存 \code{.prof} & 有跟踪开销；本实验用于函数级热点定位 \\
+py-spy & 采样 CPU & 可附加到进程、对运行程序干扰较小、可生成火焰图 & 需安装第三方工具；采样结果不强调精确调用次数 \\
+tracemalloc & Python 分配跟踪 & 标准库、可得到当前/峰值分配并追溯位置 & 不等于操作系统 RSS，也不覆盖所有本地扩展分配 \\
+memory\_profiler & 行级内存 & 容易观察每行的内存增量 & 第三方依赖、采样与装饰器会增加开销 \\
+timeit & 微基准计时 & 自动重复、适合短表达式或小函数 & 不告诉时间花在哪，不能替代 profiler \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+本实验只依赖标准库，是为了降低复现成本，而不是认为标准库工具在所有场景都最好。
+
+\section{被测工作负载}
+
+\subsection{为什么不用真实 API 作为性能输入}
+
+真实天气请求会受到 DNS、网络、远程服务器负载和缓存影响。若把这些变量混入本地算法测量，很难判断时间变化来自代码还是网络。因此实验使用 \path{data/sample_weather.json}：固定日期的 24 条小时记录，每条包含时间、温度、降水概率和风速。
+
+一次循环处理 24 条记录，10,000 轮共处理：
+
+\[
+N = 24 \times 10\,000 = 240\,000 \text{ 个事件}.
+\]
+
+这个规模足够让重复解析和中间列表产生可观察差异，同时又能在普通电脑上很快完成。
+
+\subsection{入口、模块和运行设置}
+
+入口模块为 \code{benchmarks.profile\_workload}。使用项目内 \code{.local-packages}，并把 \code{src} 和项目根目录加入 \code{PYTHONPATH}。命令行选择 \code{baseline} 或 \code{optimized} 模式、循环次数、是否启用内存跟踪以及 JSON 输出位置。
+
+\begin{lstlisting}[style=shellstyle]
+python -m benchmarks.profile_workload \
+  --mode baseline --iterations 10000 \
+  --measure-memory --output baseline.json
+\end{lstlisting}
+
+\section{优化前基线为什么慢且占内存}
+
+基线实现故意保留三种可解释的问题：
+
+\begin{lstlisting}[style=pythonstyle]
+events = []
+for _ in range(iterations):
+    ordered = sorted(
+        records,
+        key=lambda item: datetime.fromisoformat(item.time),
+    )
+    for record in ordered:
+        parsed = datetime.fromisoformat(record.time)
+        risks = assess_hour(
+            record.temperature,
+            record.rain_probability,
+            record.wind_speed,
+        )
+        events.append((parsed.hour * 60 + parsed.minute,
+                       risk_score(risks)))
+\end{lstlisting}
+
+\begin{enumerate}
+  \item \term{重复排序：}24 条输入不会在循环中变化，却每轮调用一次 \code{sorted}；
+  \item \term{重复解析：}排序键和循环体都把同一个 ISO 时间字符串转成 \code{datetime}；
+  \item \term{大中间列表：}所有 240,000 个二元组都保留到函数结束，只为最后再求和。
+\end{enumerate}
+
+这些不是“为了让数字漂亮”而设置的无关代码，而是数据处理中常见的真实反模式：把循环不变量留在热循环中、为聚合任务保留全部中间记录。
+
+\section{优化实现与功能等价性}
+
+\subsection{优化策略}
+
+优化实现把不随轮次变化的工作移到循环外：只解析和排序一次，得到 24 条准备记录；循环内部继续调用相同的风险规则，但直接更新三个累计值。
+
+\begin{lstlisting}[style=pythonstyle]
+prepared = sorted(
+    (datetime.fromisoformat(record.time).hour * 60,
+     record.temperature,
+     record.rain_probability,
+     record.wind_speed)
+    for record in records
+)
+
+event_count = time_checksum = risk_score = 0
+for _ in range(iterations):
+    for minute, temperature, rain, wind in prepared:
+        risks = assess_hour(temperature, rain, wind)
+        event_count += 1
+        time_checksum += minute
+        risk_score += score(risks)
+\end{lstlisting}
+
+\subsection{为什么先验证结果}
+
+一个运行更快但算错结果的程序不是有效优化。实验使用两个层次验证：
+
+\begin{itemize}
+  \item pytest 参数化测试分别以 1 轮和 3 轮比较两个函数的完整返回字典；
+  \item 正式 10,000 轮比较脚本再次要求三个结果字段完全一致，不一致就返回失败退出码。
+\end{itemize}
+
+实际两个版本均得到：
+
+\begin{lstlisting}[style=shellstyle]
+event_count  = 240000
+time_checksum = 165600000
+risk_score    = 620000
+\end{lstlisting}
+
+三个量分别检查处理数量、时间数据聚合和业务风险聚合。它们不能穷尽所有语义，但比只比较总耗时更能防止优化改变功能。
+
+\section{测量方法}
+
+\subsection{墙钟时间与内存峰值}
+
+\path{time.perf_counter()} 提供高分辨率单调计时。内存测量前调用 \path{tracemalloc.start()}，结束后读取 \path{get_traced_memory()} 的当前值与峰值。Python 官方文档说明，\code{tracemalloc} 用于跟踪 Python 分配的内存块，并可读取跟踪内存的当前和峰值大小\cite{python-tracemalloc}。
+
+本实验对两个版本都启用相同的跟踪条件，然后计算：
+
+\[
+\text{加速比}=\frac{T_{base}}{T_{opt}},\qquad
+\text{时间减少率}=\left(1-\frac{T_{opt}}{T_{base}}\right)\times100\%.
+\]
+
+峰值内存减少率用同样的相对公式计算。
+
+\subsection{CPU 函数跟踪}
+
+CPU 跟踪不同时启用 \code{tracemalloc}，避免两种测量工具相互叠加。每种模式分别生成 \code{cpu-baseline.prof} 和 \code{cpu-optimized.prof}，然后由 \code{pstats} 按累计时间排序，输出前 20 项文本摘要。
+
+\begin{lstlisting}[style=shellstyle]
+python -m cProfile -o cpu-baseline.prof \
+  -m benchmarks.profile_workload \
+  --mode baseline --iterations 10000
+\end{lstlisting}
+
+\section{实际 CPU 结果分析}
+
+2026年8月19日，Windows 10、Python 3.13.7 环境中的结果如下：
+
+\begin{table}[htbp]
+\centering
+\caption{cProfile 关键指标}
+\begin{tabular}{lrr}
+\toprule
+指标 & 基线 & 优化后 \\
+\midrule
+总函数调用数 & 2,875,977 & 1,426,022 \\
+profiler 总时间 & 0.543 s & 0.312 s \\
+工作负载累计时间 & 0.478 s & 0.245 s \\
+\code{datetime.fromisoformat} 调用 & 480,000 & 不再进入前20热点 \\
+\code{sorted} 调用 & 10,007 & 准备阶段一次为主 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+基线中 \code{baseline\_workload} 累计约 0.478 秒，是主热点。其下主要是 \code{sum}、\code{\_risk\_score}、\code{sorted}、\code{assess\_hour}、排序 lambda 和 \code{fromisoformat}。尤其 480,000 次日期解析，正好对应 240,000 个事件在排序键与循环体各解析一次。
+
+优化后工作负载累计约 0.245 秒，总调用数下降约 50.4\%。风险规则仍需对每个事件执行，所以 \code{assess\_hour} 与 \code{\_risk\_score} 仍是合理热点；重复日期解析和排序不再支配结果。这个变化说明优化针对了 profiler 发现的原因，而不是仅仅碰巧获得一次更快计时。
+
+\section{实际内存与时间对照}
+
+\begin{table}[htbp]
+\centering
+\caption{相同 tracemalloc 条件下的对照结果}
+\begin{tabular}{lrrr}
+\toprule
+指标 & 基线 & 优化后 & 变化 \\
+\midrule
+墙钟时间 & 0.7499 s & 0.4507 s & 减少 39.90\% \\
+加速比 & \multicolumn{2}{c}{1.6639 倍} & 越大越好 \\
+当前跟踪内存 & 112,452 B & 1,536 B & 明显下降 \\
+Python 分配峰值 & 21,573,080 B & 2,840 B & 减少 99.9868\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{center}
+\begin{tikzpicture}[x=0.9cm,y=0.075cm]
+  \draw[->] (0,0) -- (9.2,0) node[right]{实现};
+  \draw[->] (0,0) -- (0,11.5) node[above]{相对值};
+  \fill[Navy] (1.2,0) rectangle (3.0,10);
+  \fill[CodeGreen] (5.2,0) rectangle (7.0,6.01);
+  \node[below] at (2.1,0) {基线时间};
+  \node[below] at (6.1,0) {优化时间};
+  \node[above,white] at (2.1,8.7) {100\%};
+  \node[above,white] at (6.1,4.7) {60.10\%};
+\end{tikzpicture}
+\end{center}
+
+峰值内存的巨大差异来自数据结构生命周期。基线的 \code{events} 持有 240,000 个 Python 元组及整数引用，直到最后两次 \code{sum} 才释放；优化版本只保留 24 条准备记录和少量整数累计值。这里测到的是 Python 分配跟踪峰值，\risk{不是整个进程的操作系统常驻内存（RSS）}，也不能直接推广到所有数据规模。
+
+\section{误差、开销和结论边界}
+
+\begin{itemize}
+  \item profiler 和内存跟踪器本身会减慢程序，所以不能把被跟踪时间当作无扰动的生产耗时；
+  \item 单次结果受 CPU 调频、后台进程、磁盘缓存和 Python 版本影响，应关注数量级、调用结构和相对趋势；
+  \item 两个版本在同一环境、同一输入、同一轮数、同一跟踪方式下比较，控制了主要变量；
+  \item cProfile 的独立运行也显示工作负载累计时间约从 0.478 秒降至 0.245 秒，为时间结论提供了另一份证据；
+  \item 本实验的基线有意体现常见反模式，因此 99.987\% 的峰值减少不代表普通代码都能获得同等收益。
+\end{itemize}
+
+若需要更严谨的性能结论，可在冷启动后重复 20--30 次，报告中位数和四分位距；将 CPU 亲和性、Python 版本与电源策略固定；再用 py-spy 或操作系统监控工具交叉验证 RSS 和采样热点。课程必备目标是理解方法和定位原因，当前实验已保留足够的可复查原始数据。
+
+\section{复现步骤与证据文件}
+
+在项目根目录执行：
+
+\begin{lstlisting}[style=shellstyle]
+powershell -NoProfile -ExecutionPolicy Bypass \
+  -File ./scripts/run-experiment-3.ps1
+\end{lstlisting}
+
+最新证据目录为 \code{reports/experiment-3/20260819-175557/}，主要文件包括：
+
+\begin{itemize}
+  \item \code{baseline.json}、\code{optimized.json}：墙钟时间、当前和峰值内存、功能结果；
+  \item \code{comparison.json}：等价性、加速比与减少比例；
+  \item 两个 \code{.prof}：可在其它 pstats/图形工具中继续分析的原始 CPU 数据；
+  \item \code{cpu-baseline.txt}、\code{cpu-optimized.txt}：按累计时间排列的前 20 项；
+  \item \code{environment.txt}、\code{summary.txt}：运行环境和最终摘要。
+\end{itemize}
+
+建议课程报告只截取摘要和两个 CPU 热点表的关键部分，不需要给每一条 profiler 输出截图。
+
+\section{复习检查表}
+
+完成学习后，应能独立回答：
+
+\begin{enumerate}
+  \item 总耗时、函数自身时间和累计时间有什么区别？
+  \item 确定性 profiler 与采样 profiler 的取舍是什么？
+  \item 为什么固定输入比直接请求实时 API 更适合本地算法剖析？
+  \item 480,000 次时间解析怎样从工作量推导出来？
+  \item 为什么必须先验证功能等价，再接受性能优化？
+  \item tracemalloc 峰值为什么不能等同于进程 RSS？
+  \item 基线大列表为何会制造高内存峰值，流式聚合如何解决？
+\end{enumerate}
+
+\section{结论}
+
+本实验通过固定的 24 条天气数据和 10,000 轮工作量，用 cProfile 定位了重复日期解析、重复排序和聚合调用等 CPU 热点，用 tracemalloc 发现了 240,000 元素中间列表造成的内存峰值。优化把循环不变量移到外部，并用流式累计代替大列表；在功能结果完全一致的前提下，同条件跟踪时间减少 39.90\%，Python 分配峰值从 21,573,080 B 降至 2,840 B。更重要的学习结论不是某个百分比，而是“固定变量、测量热点、针对原因改进、验证等价、复测并说明边界”的方法。
+
+\begin{thebibliography}{9}
+\bibitem{python-profile}
+Python Software Foundation. \emph{The Python Profilers}.\\
+\url{https://docs.python.org/3/library/profile.html}
+
+\bibitem{python-tracemalloc}
+Python Software Foundation. \emph{tracemalloc --- Trace memory allocations}.\\
+\url{https://docs.python.org/3/library/tracemalloc.html}
+\end{thebibliography}
+
+\end{document}

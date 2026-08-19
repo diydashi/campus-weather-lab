@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campus-weather-lab"
+version = "0.1.0"
+description = "校园出行天气风险分析工具及软件测试综合实验"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers -p no:cacheprovider"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "network: 访问真实 Open-Meteo 服务的集成测试",
+]
