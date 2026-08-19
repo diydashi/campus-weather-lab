@@ -52,6 +52,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/run-experiment-2.p
 
 证据保存到 `reports/experiment-2/<时间戳>/`。云端配置位于 `.github/workflows/ci.yml`，公开仓库为 [diydashi/campus-weather-lab](https://github.com/diydashi/campus-weather-lab)。本地复演与 GitHub Actions 运行状态分开记录，项目不会用本地结果冒充云端结果。
 
+真实云端基线为 [Actions 运行 32258964845](https://github.com/diydashi/campus-weather-lab/actions/runs/32258964845)：32 项离线测试与 7 项真实接口测试全部通过，wheel、sdist、JUnit 报告和两个 artifacts 均已核验。
+
 ## 实验三：程序性能跟踪
 
 对固定的 24 小时天气样本分别执行优化前、优化后工作负载，使用 `cProfile` 和 `tracemalloc` 跟踪 CPU 与 Python 内存分配：

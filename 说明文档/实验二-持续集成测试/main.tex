@@ -81,7 +81,7 @@
 \begin{minipage}{0.88\textwidth}
 \colorbox{LightBlue}{\parbox{0.94\textwidth}{
 \textbf{文档定位：}本文是用于理解持续集成原理和复现实验过程的个人学习说明，
-不是最终课程报告。文中明确区分“已在本地验证的流水线命令”和“尚待 GitHub 托管环境验证的云端运行”。
+不是最终课程报告。文中明确区分本地复演与 GitHub 托管运行，并用真实运行号、JUnit 和制品记录支持云端结论。
 }}
 \end{minipage}
 \end{center}
@@ -94,6 +94,7 @@
 本地环境：& Windows 10、Python 3.13.7 \\
 测试框架：& pytest 8.4.1 \\
 本地复演结果：& 39 项测试全部通过，wheel 与 sdist 构建校验成功 \\
+云端运行结果：& GitHub Actions 运行 32258964845，结论 success \\
 推荐编译器：& XeLaTeX（TeXworks 中选择 XeLaTeX）
 \end{tabular}
 \end{center}
@@ -164,11 +165,11 @@ YAML 步骤遗漏或写错 & 看似有 CI，实际没有测试或打包 & 用离
 网络测试不稳定 & 远程服务波动被误判为本地代码缺陷 & 先运行离线测试，再单独运行 \code{network} 测试并生成两份报告 \\
 只测不打包 & 测试通过但发布包缺少模块 & 执行 \code{python -m build}，再打开 wheel 与 sdist 检查核心源码 \\
 证据丢失 & 无法证明后台任务执行过 & 上传 JUnit 与分发包；本地复演也保存日志、环境和哈希 \\
-伪造云端结果 & 报告结论不可复核 & 明确记录本地与云端状态，没有远程运行就写“待验证” \\
+伪造云端结果 & 报告结论不可复核 & 远程未运行时写“待验证”；运行后记录 run ID、提交号、JUnit 与制品 \\
 \bottomrule
 \end{longtable}
 
-最后一项尤其重要。本次工作区没有配置 GitHub 远程仓库或账户连接，所以可以完成配置和本地复演，但不能把本地命令成功描述成“GitHub Actions 已绿色通过”。
+最后一项尤其重要。项目最初只完成本地复演，因此当时只能写“待验证”；随后接入公开仓库并成功执行 GitHub Actions 运行 32258964845，文档才把云端状态更新为 success。这体现结论随证据演进，而不是事后把本地结果改名。
 
 \section{项目中的实现结构}
 
@@ -282,29 +283,45 @@ JUnit: tests=39, failures=0, errors=0, skipped=0
 Test time: 8.397 s
 Build exit code: 0
 Distribution verification exit code: 0
-Cloud run: pending (no GitHub remote/account connection)
+Local verdict: passed; cloud status is recorded separately
 \end{lstlisting}
 
 生成的两个分发包分别约为 5.1 KiB 和 7.2 KiB，文件大小和 SHA-256 已写入 \code{artifacts.txt}。哈希不是功能正确性的证明，但可用于确认后续拿到的文件是否与本次构建一致。
 
 \subsection{如何解释“39 passed”}
 
-39 项包括 REST 客户端的输入与契约测试、7 项真实接口测试、风险规则参数化测试、性能工作负载等价性测试以及 CI 配置自检。它说明当前环境与当前时刻下所有已定义检查通过；它不意味着软件没有任何缺陷，也不证明 GitHub 的 Ubuntu Runner 已执行成功。
+39 项包括 REST 客户端的输入与契约测试、7 项真实接口测试、风险规则参数化测试、性能工作负载等价性测试以及 CI 配置自检。该本地数字本身不证明 Ubuntu Runner 已执行；云端结论必须由后续 run ID、作业步骤、JUnit 和 artifact 单独支持。
 
-\section{云端验证应怎样完成}
+\section{真实云端运行与制品核验}
 
-后续只需由项目所有者完成一次需要账户权限的操作：
+项目推送到公开仓库 \url{https://github.com/diydashi/campus-weather-lab} 后，\code{push} 事件触发真实工作流。关键身份如下：
 
-\begin{enumerate}
-  \item 在 GitHub 建立空仓库，不要在线生成与本地冲突的 README；
-  \item 给本地仓库添加远程地址，提交源码后推送；
-  \item 在 Actions 页确认 \code{Python CI} 被触发；
-  \item 打开 \code{test-and-build}，逐项查看测试、构建和上传步骤；
-  \item 下载 \code{pytest-reports} 与 \code{python-distributions}，确认文件可打开；
-  \item 将运行链接、提交号、运行时间和真实结论补入课程报告。
-\end{enumerate}
+\begin{lstlisting}[style=shellstyle]
+commit: a36b2f445dbf9dd7207100029c6e4d9af0cfb7cf
+run id: 32258964845
+job id: 96087323031
+created: 2026-08-19 21:35:31 +08:00
+completed: 2026-08-19 21:36:00 +08:00
+run conclusion: success
+job conclusion: success
+\end{lstlisting}
 
-GitHub 官方 Python CI 教程给出了使用 \code{setup-python}、pytest、构建和制品上传的典型方式\cite{github-python-ci}。如果云端失败，应保留失败截图，先按日志定位环境差异，再修复并重跑；失败过程本身也是有价值的实验材料。
+\begin{table}[htbp]
+\centering
+\caption{GitHub Actions JUnit 核验结果}
+\begin{tabular}{lrrrrr}
+\toprule
+测试层 & tests & failures & errors & skipped & time \\
+\midrule
+离线测试 & 32 & 0 & 0 & 0 & 0.148 s \\
+真实接口测试 & 7 & 0 & 0 & 0 & 4.725 s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+作业的检出源码、配置 Python、安装依赖、两层 pytest、构建、上传报告和上传分发包步骤全部为 success。构建日志出现“Successfully built”，下载的 \code{python-distributions} 中确有 wheel 与 sdist；\code{pytest-reports} 中两份 JUnit XML 已解析为上表数据。两个 artifact 分别为 1,479 B 和 38,182 B 的 ZIP，并设置在 2026年11月17日过期。
+
+运行页为 \url{https://github.com/diydashi/campus-weather-lab/actions/runs/32258964845}。提交课程报告时可截取该页的绿色作业和 Artifacts 区域；机器可读摘要另存于 \path{reports/experiment-2/github-run-32258964845/}。GitHub 官方 Python CI 教程给出了使用 \code{setup-python}、pytest、构建和制品上传的典型方式\cite{github-python-ci}。
 
 \section{常见误区与改进方向}
 
@@ -333,7 +350,7 @@ GitHub 官方 Python CI 教程给出了使用 \code{setup-python}、pytest、构
 
 \section{结论}
 
-本实验建立了从源码到可复核证据的最小持续集成链：事件触发、准备 Python、安装依赖、分层执行 pytest、生成 JUnit、构建 wheel 与 sdist、上传报告和分发包。2026年8月19日的本地复演中 39 项测试全部通过，两个分发包构建并校验成功。云端运行需要 GitHub 仓库所有者授权推送，因此当前保持“待验证”状态；这种边界说明比伪造一张绿色截图更符合软件测试的可追溯原则。
+本实验建立了从源码到可复核证据的最小持续集成链：事件触发、准备 Python、安装依赖、分层执行 pytest、生成 JUnit、构建 wheel 与 sdist、上传报告和分发包。2026年8月19日的本地复演中 39 项测试全部通过；随后真实 GitHub Actions 运行 32258964845 再次完成 32 项离线测试和 7 项接口测试，JUnit 均为零失败、零错误，两个分发包和两类 artifact 也核验成功。实验二所要求的代码提交到后台测试、报告与自动打包流程已经完整闭环。
 
 \begin{thebibliography}{9}
 \bibitem{github-python-ci}

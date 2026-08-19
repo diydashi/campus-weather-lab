@@ -36,15 +36,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/run-experiment-2.p
 - 共执行 39 项测试，39 passed，0 failed，耗时 8.397 秒。
 - 成功生成 `campus_weather_lab-0.1.0-py3-none-any.whl` 和 `campus_weather_lab-0.1.0.tar.gz`。
 - wheel 与 sdist 的核心源码检查通过；SHA-256 和大小保存在 `artifacts.txt`。
-- GitHub 云端运行：未执行。原因是工作区没有配置远程仓库或 GitHub 账户连接。
+- GitHub 云端运行：`32258964845`，提交 `a36b2f4`，结论 `success`。
+- 云端 JUnit：离线 32 项、真实接口 7 项，合计 39 项，0 失败、0 错误、0 跳过。
+- 云端构建：wheel 与 sdist 均成功；`pytest-reports` 和 `python-distributions` 两个 artifacts 已上传并实际下载核对。
+- 运行链接：<https://github.com/diydashi/campus-weather-lab/actions/runs/32258964845>
 
 ## 结论
 
-持续集成所需配置、测试、自动打包和本地可复验证据已经完成。当前结论只证明工作流关键命令能在本地成功执行，不等价于一次 GitHub 托管运行。提交前应把项目推送到个人仓库，在 Actions 页面手动或通过推送触发，并把真实运行页截图补入最终报告。
+持续集成所需配置、测试、自动打包和本地可复验证据已经完成，并由 GitHub 托管 Ubuntu Runner 真实执行。运行 `32258964845` 的测试、构建和两个制品上传步骤全部成功；下载后的 JUnit 与分发包文件名也已核验。因此，实验二的“代码提交 → 后台测试 → 测试报告 → 自动打包 → 制品保存”链路已经闭合。
 
 ## 建议截图
 
 1. GitHub 仓库中 `.github/workflows/ci.yml` 文件页面。
-2. Actions 中绿色的 `test-and-build` 作业详情，显示测试、构建和上传制品步骤。
-3. 作业页面的 Artifacts 区域，显示 `pytest-reports` 与 `python-distributions`。
+2. 运行 `32258964845` 中绿色的 `test-and-build` 作业详情，显示测试、构建和上传制品步骤。
+3. 该运行页面的 Artifacts 区域，显示 `pytest-reports` 与 `python-distributions`。
 4. 本地 `summary.txt`，用于与云端结果交叉验证。

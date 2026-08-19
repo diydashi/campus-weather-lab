@@ -103,7 +103,7 @@
 \end{titlepage}
 
 \begin{abstract}
-本文以 Python“校园出行天气风险分析工具”为统一对象，完成三个软件测试实验。实验一针对 Open-Meteo 地理编码与天气预报 REST API，先分析输入、HTTP、JSON 契约、动态数据与本地业务规则风险，再设计离线单元测试和真实接口测试；24 项离线测试与 7 项网络测试全部通过。实验二使用 GitHub Actions 配置自动安装、分层测试、JUnit 报告、wheel/源码包构建和制品上传；本地等价复演中 39 项测试及两个分发包校验全部通过，但因当前工作区未连接 GitHub 远程仓库，云端运行证据保持待验证状态。实验三使用固定的 24 小时数据，以 cProfile 和 tracemalloc 分析 240,000 个事件的批处理；定位到重复日期解析、重复排序与大中间列表，优化后在功能结果相同的条件下，跟踪时间减少 39.90\%，Python 分配峰值从 21,573,080 B 降至 2,840 B。实验强调风险驱动、测试分层、证据可追溯与结论边界。
+本文以 Python“校园出行天气风险分析工具”为统一对象，完成三个软件测试实验。实验一针对 Open-Meteo 地理编码与天气预报 REST API，先分析输入、HTTP、JSON 契约、动态数据与本地业务规则风险，再设计离线单元测试和真实接口测试；24 项离线测试与 7 项网络测试全部通过。实验二使用 GitHub Actions 配置自动安装、分层测试、JUnit 报告、wheel/源码包构建和制品上传；本地复演中 39 项测试及两个分发包校验通过，真实云端运行 32258964845 又完成 32 项离线测试和 7 项接口测试，JUnit 均为零失败、零错误，并成功上传测试报告和分发包。实验三使用固定的 24 小时数据，以 cProfile 和 tracemalloc 分析 240,000 个事件的批处理；定位到重复日期解析、重复排序与大中间列表，优化后在功能结果相同的条件下，跟踪时间减少 39.90\%，Python 分配峰值从 21,573,080 B 降至 2,840 B。实验强调风险驱动、测试分层、证据可追溯与结论边界。
 
 \noindent\textbf{关键词：}REST API；pytest；持续集成；GitHub Actions；cProfile；tracemalloc
 \end{abstract}
@@ -255,7 +255,7 @@ jobs:
 
 此外，\code{test\_project\_configuration.py} 检查工作流是否仍含测试、JUnit、构建和制品步骤；\code{verify\_distribution.py} 打开 wheel 与 sdist，确认客户端和风险模块确实进入包中。这避免只看构建命令退出码。
 
-\subsection{本地复演结果与云端边界}
+\subsection{本地复演与真实云端结果}
 
 2026年8月19日执行 \code{scripts/run-experiment-2.ps1}，保存环境、测试、JUnit、构建、包校验和哈希。结果目录：
 
@@ -273,12 +273,13 @@ sdist: campus_weather_lab-0.1.0.tar.gz
 两个分发包均生成成功并通过内容检查，\code{artifacts.txt} 记录大小和 SHA-256。新增的 8 项离线检查使当前离线测试达到 32 项；加上 7 项真实接口测试，本地流水线共执行 39 项。
 
 \begin{center}
-\fcolorbox{CodeRed}{red!4}{\parbox{0.91\textwidth}{
-\textbf{云端证据状态：待补。}当前工作区没有 GitHub 远程地址或账户连接，因此未执行托管 Runner，不能把本地复演写成 GitHub Actions 已通过。提交前应由仓库所有者推送项目，在 Actions 页确认绿色作业和两个 artifacts，并将真实运行链接或关键截图补在此处。
+\fcolorbox{CodeGreen}{green!4}{\parbox{0.91\textwidth}{
+\textbf{云端证据状态：已完成。}提交 \code{a36b2f4} 推送到公开仓库后触发 GitHub Actions 运行 32258964845。作业 \code{test-and-build} 的检出、Python 环境、依赖安装、离线测试、真实接口测试、构建和两次制品上传步骤全部为 success。运行页：
+\url{https://github.com/diydashi/campus-weather-lab/actions/runs/32258964845}
 }}
 \end{center}
 
-这一限制不影响工作流配置、测试、自动打包和本地可复验部分的完成，但课程任务明确要求代码仓库到 CI 的流程，故云端截图是当前唯一需要账户权限补齐的证据。
+云端 \code{pytest-reports} 已实际下载并解析：离线 JUnit 为 32 tests、0 failures、0 errors、0 skipped、0.148 s；接口 JUnit 为 7 tests、0 failures、0 errors、0 skipped、4.725 s。\code{python-distributions} 中存在 wheel 与 sdist；两个 artifact ZIP 分别为 1,479 B 和 38,182 B。运行从北京时间 21:35:31 开始，于 21:36:00 完成。报告提交时可将运行页的绿色作业与 Artifacts 区域作为一张关键信息截图。
 
 \section{实验三：程序性能跟踪}
 
@@ -343,9 +344,9 @@ Python 分配峰值 & 21,573,080 B & 2,840 B & 减少 99.9868\% \\
 
 真实 API 失败可能来自网络和第三方服务。项目通过 pytest 标记把 32 项离线检查与 7 项真实接口测试分层，CI 也生成两份 JUnit。改进方向是给网络测试增加有限重试、定时监控和失败分类，但不应让重试掩盖持续的服务契约变化。
 
-\subsection{本地复演不是云端运行}
+\subsection{本地复演与云端运行不能混写}
 
-持续集成配置和全部核心命令已在本地成功，但远程仓库操作需要项目所有者账户权限。解决方法是完整保留本地证据，同时在报告中明确云端待办，不伪造绿色记录。后续推送后应核对 Ubuntu 上的路径、依赖缓存和 artifact，并把提交号与运行链接记录下来。
+持续集成配置和核心命令先在 Windows 本地成功，但该事实本身不能证明 Ubuntu Runner、GitHub 事件上下文和 artifact 服务可用。因此初稿将云端状态写为待验证；远程仓库建立后才推送提交并记录运行 32258964845。随后又下载解析 JUnit、核对分发包名称，使结论从“本地可运行”升级为“托管流水线已真实闭环”。这比只放一个绿色图标更容易复核。
 
 \subsection{优化容易破坏功能}
 
@@ -357,12 +358,12 @@ Python 分配峰值 & 21,573,080 B & 2,840 B & 减少 99.9868\% \\
   \item CI 增加 Python 3.11--3.13 矩阵、安装后冒烟测试和分支保护；
   \item 性能实验重复多轮，报告中位数和四分位距，并用采样 profiler 与操作系统 RSS 交叉验证；
   \item API 测试增加响应模式版本记录与限流处理，避免第三方接口长期变化时只得到模糊失败；
-  \item 最终提交前补充姓名学号，并由本人完成 GitHub 推送与 Actions 关键截图。
+  \item 最终提交前补充姓名学号，并按课程偏好截取运行 32258964845 的绿色作业与 Artifacts 区域。
 \end{itemize}
 
 \section{结论}
 
-三个实验围绕同一 Python 项目形成连续验证：实验一从风险出发建立 24 项离线测试和 7 项真实接口测试；实验二把当前 39 项测试、JUnit、打包和制品保存组织成 GitHub Actions 工作流，并完成本地复演；实验三用 CPU 与内存跟踪定位重复解析、重复排序和大列表，优化后在结果等价前提下获得明确改善。实验结果、环境、日志和机器可读报告均按时间戳保存，结论中也区分了已验证事实和需账户权限完成的云端证据。
+三个实验围绕同一 Python 项目形成连续验证：实验一从风险出发建立 24 项离线测试和 7 项真实接口测试；实验二把当前 39 项测试、JUnit、打包和制品保存组织成 GitHub Actions 工作流，完成本地复演后，又由真实托管运行 32258964845 验证测试、构建和制品上传；实验三用 CPU 与内存跟踪定位重复解析、重复排序和大列表，优化后在结果等价前提下获得明确改善。实验结果、环境、日志、机器可读报告、远程提交号和运行链接均已记录，三个实验的必备链路均已闭合。
 
 \section*{大语言模型使用说明}
 \addcontentsline{toc}{section}{大语言模型使用说明}
@@ -374,9 +375,10 @@ Python 分配峰值 & 21,573,080 B & 2,840 B & 减少 99.9868\% \\
   \item “建立项目和 agents 指导文档，然后先进行实验一的实现和测试；第三方库尽量放在本地目录。”
   \item “完善实验一结果测试和记录；每个实验建立中文 LaTeX 学习说明，详细解释原理、方法和结果。”
   \item “完成剩余两个实验，然后使用 LaTeX 编写报告。”
+  \item “接入公开 GitHub 仓库，测试是否可用，补全缺失环节并完善报告和说明文档。”
 \end{enumerate}
 
-回答摘要：建议复用校园天气风险工具完成服务单元测试、持续集成和程序性能跟踪；实现分层 pytest、真实接口留证、GitHub Actions、本地 CI 复演、分发包校验、cProfile/tracemalloc 对照实验，并生成学习说明与本报告。所有大模型输出均由实际命令和报告文件核验；未发生的 GitHub 云端运行没有被写成成功。完整记录见项目 \code{AI\_USAGE.md}。
+回答摘要：建议复用校园天气风险工具完成服务单元测试、持续集成和程序性能跟踪；实现分层 pytest、真实接口留证、GitHub Actions、本地 CI 复演、分发包校验、cProfile/tracemalloc 对照实验，并生成学习说明与本报告。远程仓库建立后，辅助核对推送权限、真实运行状态、JUnit 和 artifacts；所有结论均由实际命令、报告文件和 GitHub 运行 32258964845 核验。完整记录见项目 \code{AI\_USAGE.md}。
 
 \begin{thebibliography}{9}
 \bibitem{openmeteo-geocoding}
