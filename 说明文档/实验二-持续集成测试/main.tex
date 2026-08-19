@@ -10,6 +10,7 @@
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 \usepackage{fancyhdr}
@@ -321,7 +322,15 @@ job conclusion: success
 
 作业的检出源码、配置 Python、安装依赖、两层 pytest、构建、上传报告和上传分发包步骤全部为 success。构建日志出现“Successfully built”，下载的 \code{python-distributions} 中确有 wheel 与 sdist；\code{pytest-reports} 中两份 JUnit XML 已解析为上表数据。两个 artifact 分别为 1,479 B 和 38,182 B 的 ZIP，并设置在 2026年11月17日过期。
 
-运行页为 \url{https://github.com/diydashi/campus-weather-lab/actions/runs/32258964845}。提交课程报告时可截取该页的绿色作业和 Artifacts 区域；机器可读摘要另存于 \path{reports/experiment-2/github-run-32258964845/}。GitHub 官方 Python CI 教程给出了使用 \code{setup-python}、pytest、构建和制品上传的典型方式\cite{github-python-ci}。
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.97\textwidth,height=0.42\textheight,keepaspectratio]{../../课程报告/images/github-actions-run.png}
+  \caption{GitHub Actions 运行 32258964845 的成功作业与制品}
+  \label{fig:github-actions-run}
+\end{figure}
+\clearpage
+
+图~\ref{fig:github-actions-run} 同时显示 Success 状态、绿色 \code{test-and-build} 作业和两个 artifact。图中的黄色 Annotations 是 GitHub 对相关 Action 所用 Node.js 版本迁移的提醒，不是测试失败，也不改变本次作业的 success 结论。运行页为 \url{https://github.com/diydashi/campus-weather-lab/actions/runs/32258964845}；机器可读摘要另存于 \path{reports/experiment-2/github-run-32258964845/}。GitHub 官方 Python CI 教程给出了使用 \code{setup-python}、pytest、构建和制品上传的典型方式\cite{github-python-ci}。
 
 \section{常见误区与改进方向}
 

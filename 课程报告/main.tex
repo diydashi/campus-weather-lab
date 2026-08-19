@@ -11,6 +11,7 @@
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 \usepackage{fancyhdr}
@@ -279,7 +280,16 @@ sdist: campus_weather_lab-0.1.0.tar.gz
 }}
 \end{center}
 
-云端 \code{pytest-reports} 已实际下载并解析：离线 JUnit 为 32 tests、0 failures、0 errors、0 skipped、0.148 s；接口 JUnit 为 7 tests、0 failures、0 errors、0 skipped、4.725 s。\code{python-distributions} 中存在 wheel 与 sdist；两个 artifact ZIP 分别为 1,479 B 和 38,182 B。运行从北京时间 21:35:31 开始，于 21:36:00 完成。报告提交时可将运行页的绿色作业与 Artifacts 区域作为一张关键信息截图。
+云端 \code{pytest-reports} 已实际下载并解析：离线 JUnit 为 32 tests、0 failures、0 errors、0 skipped、0.148 s；接口 JUnit 为 7 tests、0 failures、0 errors、0 skipped、4.725 s。\code{python-distributions} 中存在 wheel 与 sdist；两个 artifact ZIP 分别为 1,479 B 和 38,182 B。运行从北京时间 21:35:31 开始，于 21:36:00 完成。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.96\textwidth,height=0.40\textheight,keepaspectratio]{images/github-actions-run.png}
+  \caption{GitHub Actions 运行 32258964845 的真实成功页面}
+  \label{fig:github-actions-evidence}
+\end{figure}
+
+图~\ref{fig:github-actions-evidence} 同时保留绿色作业和两个制品。页面中的黄色 Annotations 是 GitHub 对相关 Action 所用 Node.js 版本迁移的提醒，不代表测试失败；作业与整次运行的结论仍为 success。
 
 \section{实验三：程序性能跟踪}
 
@@ -358,7 +368,7 @@ Python 分配峰值 & 21,573,080 B & 2,840 B & 减少 99.9868\% \\
   \item CI 增加 Python 3.11--3.13 矩阵、安装后冒烟测试和分支保护；
   \item 性能实验重复多轮，报告中位数和四分位距，并用采样 profiler 与操作系统 RSS 交叉验证；
   \item API 测试增加响应模式版本记录与限流处理，避免第三方接口长期变化时只得到模糊失败；
-  \item 最终提交前补充姓名学号，并按课程偏好截取运行 32258964845 的绿色作业与 Artifacts 区域。
+  \item 最终提交前仅在本地补充姓名学号，避免公开仓库暴露完整个人信息。
 \end{itemize}
 
 \section{结论}
